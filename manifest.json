@@ -1,0 +1,58 @@
+{
+  "name": "CamGuard AI — Hidden Camera Detector",
+  "short_name": "CamGuard AI",
+  "description": "AI-powered hidden camera detector — Visual AI, lens reflection, network scan, and magnetic field analysis.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060612",
+  "theme_color": "#0a0a1a",
+  "lang": "en",
+  "categories": [
+    "utilities",
+    "security",
+    "privacy"
+  ],
+  "icons": [
+    {
+      "src": "assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "AI Visual Scan",
+      "short_name": "AI Scan",
+      "description": "Launch AI camera detection",
+      "url": "./#visual",
+      "icons": [
+        {
+          "src": "assets/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
+    },
+    {
+      "name": "Network Scan",
+      "short_name": "Net Scan",
+      "description": "Scan for WiFi cameras",
+      "url": "./#network",
+      "icons": [
+        {
+          "src": "assets/icons/icon.svg",
+          "sizes": "any"
+        }
+      ]
+    }
+  ]
+}

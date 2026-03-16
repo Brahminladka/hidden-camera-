@@ -1,0 +1,20 @@
+{
+  "csv_path": "D:\\pages\\hiddencam-detector\\docs\\manual_labels_master.csv",
+  "output_root": "D:\\pages\\hiddencam-detector\\dataset",
+  "seed": 42,
+  "val_split": 0.2,
+  "usable_rows": 1557,
+  "split_counts": {
+    "train": {
+      "camera": 1073,
+      "normal": 173
+    },
+    "val": {
+      "camera": 268,
+      "normal": 43
+    }
+  },
+  "skipped_rows": {
+    "review_needed": 81
+  }
+}

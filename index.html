@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a1a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CamGuard AI" />
+  <meta name="description"
+    content="AI-powered hidden camera detector using lens reflection, visual AI, network scanning, and magnetic field analysis." />
+  <title>CamGuard AI — Hidden Camera Detector</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml" />
+  <link rel="shortcut icon" href="assets/icons/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+    rel="stylesheet" />
+  <!-- TensorFlow.js + COCO-SSD model for object detection -->
+  <!-- Use local copies for total offline independence -->
+  <script src="assets/vendor/tf.min.js"></script>
+  <script src="assets/vendor/coco-ssd.min.js"></script>
+  <script src="assets/custom_model_embed.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- Animated background -->
+  <div class="bg-grid"></div>
+  <div class="scan-line"></div>
+
+  <!-- App Header -->
+  <header class="app-header" id="mainHeader">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="17" stroke="url(#lg1)" stroke-width="2" />
+            <circle cx="18" cy="18" r="9" fill="url(#lg2)" opacity="0.3" />
+            <circle cx="18" cy="18" r="4" fill="url(#lg2)" />
+            <path d="M18 6 L18 2 M18 30 L18 34 M6 18 L2 18 M30 18 L34 18" stroke="url(#lg1)" stroke-width="2"
+              stroke-linecap="round" />
+            <defs>
+              <linearGradient id="lg1" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f5ff" />
+                <stop offset="1" stop-color="#7c3aed" />
+              </linearGradient>
+              <linearGradient id="lg2" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00f5ff" />
+                <stop offset="1" stop-color="#a855f7" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <span class="logo-text">CamGuard <span class="ai-badge">AI</span></span>
+          <span class="logo-sub">Hidden Camera Detector</span>
+        </div>
+      </div>
+      <div class="header-status" id="headerStatus">
+        <span class="status-dot safe"></span>
+        <span id="statusText">Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App -->
+  <main class="app-main">
+
+    <!-- Dashboard / Home -->
+    <section class="screen active" id="screen-home">
+      <div class="threat-level-card" id="threatCard">
+        <div class="threat-ring-wrap">
+          <svg class="threat-ring" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="#1a1a3a" stroke-width="10" />
+            <circle cx="60" cy="60" r="50" fill="none" stroke="url(#threatGrad)" stroke-width="10"
+              stroke-dasharray="314" stroke-dashoffset="314" stroke-linecap="round" id="threatArc"
+              transform="rotate(-90 60 60)" />
+            <defs>
+              <linearGradient id="threatGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00f5ff" />
+                <stop offset="100%" stop-color="#a855f7" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="threat-center">
+            <div class="threat-score" id="threatScore">0</div>
+            <div class="threat-label">Threat Score</div>
+          </div>
+        </div>
+        <div class="threat-info">
+          <h2 class="threat-title" id="threatTitle">SAFE ZONE</h2>
+          <p class="threat-desc" id="threatDesc">No hidden cameras detected. Run scans to check your environment.</p>
+          <div class="findings-grid" id="findingsGrid">
+            <div class="finding-item" data-type="visual">
+              <div class="finding-icon">👁️</div>
+              <div class="finding-val" id="find-visual">—</div>
+              <div class="finding-lbl">Visual AI</div>
+            </div>
+            <div class="finding-item" data-type="lens">
+              <div class="finding-icon">🔦</div>
+              <div class="finding-val" id="find-lens">—</div>
+              <div class="finding-lbl">Lens Scan</div>
+            </div>
+            <div class="finding-item" data-type="network">
+              <div class="finding-icon">📡</div>
+              <div class="finding-val" id="find-network">—</div>
+              <div class="finding-lbl">Network</div>
+            </div>
+            <div class="finding-item" data-type="magnetic">
+              <div class="finding-icon">🧲</div>
+              <div class="finding-val" id="find-magnetic">—</div>
+              <div class="finding-lbl">Magnetic</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Learned stats bar -->
+      <div id="homeStats" class="home-stats-bar">
+        <div class="stat-pill">🔍 0 scans</div>
+        <div class="stat-pill alert-pill">🚨 0 confirmed</div>
+        <div class="stat-pill">⚡ Sensitivity: 22%</div>
+        <div class="stat-pill muted-pill">🕐 Last: Never</div>
+      </div>
+
+      <!-- PWA Install Prompt (Hidden by default) -->
+      <div id="pwaCard" class="info-card hidden"
+        style="background:rgba(124,58,237,0.12); border-color:rgba(124,58,237,0.3); margin-top:0; margin-bottom:15px;">
+        <div class="guide-icon">📲</div>
+        <div class="guide-text" style="flex:1">
+          <strong style="color:var(--primary); display:block; margin-bottom:2px;">Install CamGuard AI</strong>
+          Add to home screen for full-screen mode and faster access.
+        </div>
+        <button id="btnInstallPWA" class="btn-primary"
+          style="padding:8px 14px; font-size:0.75rem; width:auto; height:auto; border-radius:8px; box-shadow:0 4px 12px rgba(124,58,237,0.3)">
+          Install
+        </button>
+      </div>
+
+      <div class="scan-modes">
+        <button class="mode-card" onclick="openScreen('screen-visual')" id="btn-visual">
+          <div class="mode-icon-wrap ai-glow">
+            <svg viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="20" r="12" stroke="#00f5ff" stroke-width="2" />
+              <circle cx="20" cy="20" r="5" fill="#00f5ff" />
+              <path d="M2 20 Q10 8 20 8 Q30 8 38 20 Q30 32 20 32 Q10 32 2 20Z" stroke="#a855f7" stroke-width="1.5"
+                fill="none" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>AI Visual Scan</h3>
+            <p>AI + optical lens reflection scan in <strong>dark room</strong></p>
+          </div>
+          <div class="mode-badge">AI</div>
+        </button>
+
+        <button class="mode-card" onclick="openScreen('screen-lens')" id="btn-lens">
+          <div class="mode-icon-wrap lens-glow">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M5 20 L35 20 M20 5 L20 35" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" />
+              <circle cx="20" cy="20" r="10" stroke="#f59e0b" stroke-width="2" />
+              <circle cx="20" cy="20" r="2" fill="#f59e0b" />
+              <circle cx="20" cy="20" r="15" stroke="#f59e0b" stroke-width="1" opacity="0.3" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>Lens Reflection</h3>
+            <p>Lens glint + IR detection — best in <strong>dark room, lights off</strong></p>
+          </div>
+          <div class="mode-badge lens">🔦</div>
+        </button>
+
+        <button class="mode-card" onclick="openScreen('screen-network')" id="btn-network">
+          <div class="mode-icon-wrap net-glow">
+            <svg viewBox="0 0 40 40" fill="none">
+              <rect x="15" y="15" width="10" height="10" rx="2" stroke="#10b981" stroke-width="2" />
+              <circle cx="20" cy="20" r="13" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3 3" />
+              <path d="M20 7 L20 4 M20 33 L20 36 M7 20 L4 20 M33 20 L36 20" stroke="#10b981" stroke-width="2"
+                stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>Network Scan</h3>
+            <p>Finds WiFi-connected spy cameras on your network</p>
+          </div>
+          <div class="mode-badge net">📡</div>
+        </button>
+
+        <button class="mode-card" onclick="openScreen('screen-magnetic')" id="btn-magnetic">
+          <div class="mode-icon-wrap mag-glow">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M10 10 Q10 30 20 30 Q30 30 30 10" stroke="#ec4899" stroke-width="2" fill="none"
+                stroke-linecap="round" />
+              <path d="M8 10 L12 10 M28 10 L32 10" stroke="#ec4899" stroke-width="3" stroke-linecap="round" />
+              <path d="M15 22 Q20 28 25 22" stroke="#ec4899" stroke-width="1.5" fill="none" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>Magnetic Field</h3>
+            <p>Finds hidden electronics + batteries behind walls/objects</p>
+          </div>
+          <div class="mode-badge mag">🧲</div>
+        </button>
+
+        <button class="mode-card" onclick="openScreen('screen-ir')" id="btn-ir"
+          style="border-color:rgba(168, 85, 247, 0.3)">
+          <div class="mode-icon-wrap"
+            style="background:rgba(168, 85, 247, 0.1); box-shadow:0 0 15px rgba(168, 85, 247, 0.2)">
+            <svg viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="20" r="14" stroke="#a855f7" stroke-width="2" />
+              <circle cx="20" cy="20" r="4" fill="#a855f7" />
+              <path d="M7 20 H13 M27 20 H33 M20 7 V13 M20 27 V33" stroke="#a855f7" stroke-width="2"
+                stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>IR Remote Scan</h3>
+            <p>Uses Front Camera to see <strong>Invisible IR Signals</strong> from cams/remotes</p>
+          </div>
+          <div class="mode-badge" style="background:#a855f7; color:#fff">IR</div>
+        </button>
+
+        <!-- NEW: Fusion AI Panel -->
+        <button class="mode-card" onclick="openFusionPanel()" id="btn-fusion"
+          style="grid-column: 1 / -1; background:linear-gradient(135deg,rgba(168,85,247,0.18) 0%,rgba(0,245,255,0.06) 100%); border-color:rgba(168,85,247,0.4)">
+          <div class="mode-icon-wrap" style="background:rgba(168,85,247,0.2);box-shadow:0 0 20px rgba(168,85,247,0.3)">
+            <span style="font-size:22px">🔬</span>
+          </div>
+          <div class="mode-info">
+            <h3 style="color:#c084fc">Multi-Sensor Fusion Panel</h3>
+            <p>AI-powered combined risk score from all sensors</p>
+          </div>
+          <div class="mode-badge" style="background:rgba(168,85,247,0.3);color:#c084fc">FUSION</div>
+        </button>
+
+        <!-- New: AI Training Lab -->
+        <button class="mode-card accent-card" onclick="openScreen('screen-training')" id="btn-training"
+          style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(0, 245, 255, 0.05) 100%); border-color: rgba(168, 85, 247, 0.3)">
+          <div class="mode-icon-wrap ai-glow-intense">
+            <div
+              style="width:24px; height:24px; border:3px solid #a855f7; border-radius:50%; border-top-color:transparent; animation: spin 2s linear infinite">
+            </div>
+          </div>
+          <div class="mode-info">
+            <h3>AI Training Lab</h3>
+            <p>Feed videos/images to retrain the local AI brain</p>
+          </div>
+          <div class="mode-badge" style="background:var(--accent); color:#fff">LAB</div>
+        </button>
+        <button class="mode-card" onclick="BLEScanner.scan()" id="btn-bluetooth">
+          <div class="mode-icon-wrap"
+            style="background:rgba(37, 99, 235, 0.15); border:1px solid rgba(37, 99, 235, 0.4)">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M10 13 L30 27 L20 35 V5 L30 13 L10 27" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div class="mode-info">
+            <h3>Bluetooth Scan</h3>
+            <p>Finds nearby wireless cameras NOT connected to your WiFi</p>
+          </div>
+          <div class="mode-badge" style="background:#2563eb; color:#fff">BLE</div>
+        </button>
+
+        <button class="mode-card" onclick="showHistory()" id="btn-history"
+          style="grid-column: 1 / -1; background: var(--bg-card); border-color: rgba(255,255,255,0.05)">
+          <div class="mode-icon-wrap"
+            style="background:transparent;box-shadow:none;border:1px solid rgba(255,255,255,0.1)">
+            <span style="font-size:20px">📜</span>
+          </div>
+          <div class="mode-info">
+            <h3>Scan History & Learning</h3>
+            <p>View previous detections and current AI sensitivity levels</p>
+          </div>
+          <div class="mode-badge" style="background:transparent">→</div>
+        </button>
+      </div>
+
+      <button class="btn-full-scan pulse-btn" id="btnFullScan" onclick="startFullScan()">
+        <span class="btn-icon">⚡</span>
+        Full Fusion Scan (All Sensors)
+      </button>
+    </section>
+
+    <!-- Screen: AI Visual Scan -->
+    <section class="screen" id="screen-visual">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>AI Visual Scan</h2>
+        <span class="screen-badge ai">TF.js</span>
+      </div>
+
+      <!-- AI Model Selector -->
+        <div class="model-selector"
+          style="margin:0 15px 15px 15px; display:flex; gap:10px; overflow-x:auto; padding-bottom:5px">
+        <button class="model-pill active" id="btnModel-coco" onclick="setModelType('coco')">COCO-SSD (Fast)</button>
+        <button class="model-pill" id="btnModel-yolo" onclick="setModelType('yolo')">YOLOv8 (95% Acc)</button>
+        <button class="model-pill" id="btnModel-hybrid" onclick="setModelType('hybrid')">Hybrid (Best)</button>
+        <button class="model-pill" id="btnModel-custom" onclick="setModelType('custom')">Custom (Trained)</button>
+      </div>
+      <div class="video-container" id="visualVideoContainer" style="aspect-ratio:3/4">
+        <video id="visualVideo" autoplay muted playsinline></video>
+        <canvas id="visualCanvas"></canvas>
+        <div class="video-overlay" id="visualOverlay">
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+          <div class="scan-beam" id="scanBeam"></div>
+          <div class="detection-label" id="detectionLabel">Initializing AI Model…</div>
+        </div>
+        <div class="cam-switch-btn" id="camSwitchBtn" onclick="switchCamera()">🔄</div>
+      </div>
+      <div class="detection-stats" id="visualStats">
+        <div class="stat-card">
+          <div class="stat-val" id="vStat-fps">—</div>
+          <div class="stat-lbl">FPS</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="vStat-objects">0</div>
+          <div class="stat-lbl">Objects Found</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="vStat-cameras">0</div>
+          <div class="stat-lbl">Cameras Found</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="vStat-conf">—</div>
+          <div class="stat-lbl">Confidence</div>
+        </div>
+      </div>
+      <div class="detections-list" id="detectionsList">
+        <p class="list-empty">Detected objects will appear here…</p>
+      </div>
+      <div class="screen-actions">
+        <button class="btn-primary" id="btnStartVisual" onclick="startVisualScan()">
+          🎥 Start AI Scan
+        </button>
+        <button class="btn-secondary" id="btnStopVisual" onclick="stopVisualScan()" disabled>
+          ⏹ Stop
+        </button>
+      </div>
+      <div class="screen-actions" style="margin-top:8px">
+        <input id="videoFileInput" type="file" accept="video/*" style="display:none" onchange="handleVideoFileSelected(event)">
+        <button class="btn-secondary" onclick="selectVideoFile()">Load Video File</button>
+        <button class="btn-secondary" onclick="useCameraMode()">Use Camera</button>
+      </div>
+    </section>
+
+    <!-- Screen: Lens Reflection Scan -->
+    <section class="screen" id="screen-lens">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>Lens Reflection Scan</h2>
+        <div style="display:flex;gap:5px">
+          <span class="screen-badge lens">Optical</span>
+          <span class="screen-badge"
+            style="background:rgba(168,85,247,0.15);color:var(--accent);border-color:rgba(168,85,247,0.3)">AI</span>
+        </div>
+      </div>
+
+      <!-- Guide -->
+      <div class="lens-guide-card">
+        <div class="guide-icon">💡</div>
+        <div class="guide-text">
+          <strong>🌑 Dark Room Required:</strong> Turn off ALL room lights first.
+          Then tap <strong>Start Scanning</strong> and slowly sweep walls, shelves, smoke detectors, clocks and any
+          objects.
+          Hidden camera lenses glow as tiny bright spots against the dark — marked with orange circles.
+          The AI also flags suspicious electronics simultaneously. Tap <strong>Torch ON</strong> to add flashlight.
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="guide-icon">🦾</div>
+        <div class="guide-text">
+          <strong>Why use this?</strong> Optical scanning works even if a camera is offline, recording to an internal SD
+          card, or not connected to WiFi. It detects the physical lens and IR night-vision LEDs directly.
+        </div>
+      </div>
+
+      <!-- Full-width video -->
+      <div class="video-container" style="aspect-ratio:3/4">
+        <video id="lensVideo" autoplay muted playsinline></video>
+        <canvas id="lensCanvas"></canvas>
+        <!-- AI overlay canvas (drawn on top for bounding boxes) -->
+        <canvas id="lensAICanvas"
+          style="position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none"></canvas>
+        <div class="video-overlay" id="lensOverlay">
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+          <div class="scan-beam"></div>
+          <div class="reflection-indicators" id="reflectionIndicators"></div>
+          <div class="detection-label" id="lensLabel">Tap Start to begin scanning…</div>
+        </div>
+        <!-- Torch button on video -->
+        <button id="btnTorch" onclick="toggleTorch()" disabled
+          style="position:absolute;top:10px;right:10px;z-index:10;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);border:1px solid rgba(245,158,11,0.4);border-radius:8px;padding:5px 11px;font-size:0.72rem;font-family:var(--font);font-weight:700;color:var(--warn);cursor:pointer;transition:all 0.2s">
+          🔦 Torch OFF
+        </button>
+      </div>
+
+      <!-- Action buttons RIGHT under video -->
+      <div class="screen-actions" style="margin-top:10px">
+        <button class="btn-primary" id="btnStartLens" onclick="startLensScan()">
+          🔦 Start Scanning
+        </button>
+        <button class="btn-secondary" id="btnStopLens" onclick="stopLensScan()" disabled>
+          ⏹ Stop Camera
+        </button>
+      </div>
+
+      <!-- 6-cell live stats -->
+      <div class="lens-stats-grid" id="lensStatsGrid">
+        <div class="lens-stat-card">
+          <div class="ls-val" id="lsFPS">—</div>
+          <div class="ls-lbl">FPS</div>
+        </div>
+        <div class="lens-stat-card">
+          <div class="ls-val" id="lsSpots">0</div>
+          <div class="ls-lbl">Bright Spots</div>
+        </div>
+        <div class="lens-stat-card">
+          <div class="ls-val" id="lsClusters">0</div>
+          <div class="ls-lbl">Reflections</div>
+        </div>
+        <div class="lens-stat-card alert-stat">
+          <div class="ls-val danger-val" id="lsIR">0%</div>
+          <div class="ls-lbl">IR Score</div>
+        </div>
+        <div class="lens-stat-card">
+          <div class="ls-val" id="lsAIObj">0</div>
+          <div class="ls-lbl">AI Objects</div>
+        </div>
+        <div class="lens-stat-card alert-stat">
+          <div class="ls-val danger-val" id="lsRiskScore">0%</div>
+          <div class="ls-lbl">Risk Score</div>
+        </div>
+      </div>
+
+      <!-- Progress bars -->
+      <div class="lens-analysis" id="lensAnalysis">
+        <div class="analysis-row">
+          <span class="analysis-key">Max Brightness</span>
+          <div class="progress-bar">
+            <div class="progress-fill" id="lensBrightBar" style="width:0%"></div>
+          </div>
+          <span class="analysis-val" id="lensBright">0%</span>
+        </div>
+        <div class="analysis-row">
+          <span class="analysis-key">IR Reflection Score</span>
+          <div class="progress-bar">
+            <div class="progress-fill alert-fill" id="lensIRBar" style="width:0%"></div>
+          </div>
+          <span class="analysis-val alert-val" id="lensIR2">0%</span>
+        </div>
+        <div class="analysis-row">
+          <span class="analysis-key">Combined Risk</span>
+          <div class="progress-bar">
+            <div class="progress-fill alert-fill" id="lensRiskBar" style="width:0%"></div>
+          </div>
+          <span class="analysis-val alert-val" id="lensRisk2">0%</span>
+        </div>
+      </div>
+
+      <!-- Alert banner with feedback -->
+      <div class="alert-banner hidden" id="lensAlert" style="flex-direction:column; gap:10px; align-items:stretch">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span>🚨</span> <span id="lensAlertText">Potential lens reflection detected!</span>
+        </div>
+        <div style="display:flex; gap:8px; width:100%">
+          <button
+            style="flex:1; padding:8px; border-radius:6px; border:none; background:rgba(255,255,255,0.2); color:#fff; font-weight:600"
+            onclick="alertFeedback(true)">
+            ✅ Real Camera
+          </button>
+          <button
+            style="flex:1; padding:8px; border-radius:6px; border:none; background:transparent; border:1px solid rgba(255,255,255,0.2); color:#fff"
+            onclick="alertFeedback(false)">
+            ❌ False Alarm
+          </button>
+        </div>
+      </div>
+
+      <!-- Live detection log -->
+      <div class="lens-log-header">
+        <span>🔴 Live Detection Log</span>
+        <span class="hint-text" id="lensRunning">● Camera stopped</span>
+      </div>
+      <div class="detections-list" id="lensLog" style="max-height:170px">
+        <p class="list-empty">Start scan — real-time detections appear here…</p>
+      </div>
+    </section>
+
+    <!-- Screen: AI Training Lab -->
+    <section class="screen" id="screen-training">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>AI Training Lab</h2>
+        <span class="screen-badge" style="background:rgba(168, 85, 247, 0.2); color:#a855f7">EXPERIMENTAL</span>
+      </div>
+
+      <div class="info-card">
+        <div class="guide-icon">🧠</div>
+        <div class="guide-text">
+          <strong>Retrain your AI:</strong> Feed the "brain" with videos or images of suspected hidden cameras. The AI
+          will store the features and adjust its sensitivity for your specific hardware.
+        </div>
+      </div>
+
+      <!-- Lab Controls -->
+      <div class="lab-grid">
+        <div class="lab-card">
+          <div class="lab-val" id="lab-synapses">0</div>
+          <div class="lab-lbl">Learned Patterns</div>
+        </div>
+        <div class="lab-card">
+          <div class="lab-val" id="lab-accuracy">92%</div>
+          <div class="lab-lbl">Local Accuracy</div>
+        </div>
+      </div>
+
+      <!-- File Upload Area -->
+      <div class="lab-tabs" style="display:flex; gap:10px; margin-bottom:15px">
+        <button onclick="setLabTab('file')" id="tab-lab-file" class="tab-btn active">📁 Local File</button>
+        <button onclick="setLabTab('url')" id="tab-lab-url" class="tab-btn">🔗 Remote Link</button>
+      </div>
+
+      <div id="lab-file-zone" class="upload-zone" onclick="document.getElementById('labFile').click()">
+        <div class="upload-icon">📁</div>
+        <div class="upload-text">
+          <strong>Tap to Upload Video/Image</strong>
+          <p>Analyze local files for deep learning.</p>
+        </div>
+        <input type="file" id="labFile" hidden accept="video/*,image/*" onchange="handleLabUpload(this)">
+      </div>
+
+      <div id="lab-url-zone" class="upload-zone hidden" style="cursor:default">
+        <div class="upload-icon">🔗</div>
+        <div class="upload-text" style="width:100%">
+          <strong>Paste Video URL</strong>
+          <div style="display:flex; gap:8px; margin-top:10px">
+            <input type="text" id="labUrl" placeholder="https://example.com/video.mp4"
+              style="flex:1; background:var(--bg); border:1px solid var(--card-border); color:#fff; padding:10px; border-radius:6px; font-size:0.8rem">
+            <button onclick="handleLabUrl()" class="btn-primary" style="padding:0 20px">Load</button>
+          </div>
+          <p style="margin-top:10px; font-size:0.65rem; color:var(--warn)">Note: Due to Browser Security (CORS), direct
+            YouTube links require a proxy. Direct .mp4 links work best.</p>
+        </div>
+      </div>
+
+      <!-- Preview for file analysis -->
+      <div id="labPreviewContainer" class="video-container hidden" style="aspect-ratio:3/4; margin-top:20px">
+        <video id="labVideo" muted playsinline style="width:100%; height:100%; object-fit:cover"></video>
+        <img id="labImg" class="hidden" style="width:100%; height:100%; object-fit:contain">
+        <canvas id="labCanvas" style="position:absolute; inset:0; width:100%; height:100%"></canvas>
+        <div class="scan-beam"></div>
+      </div>
+
+      <div id="labActions" class="screen-actions hidden" style="margin-top:10px">
+        <button class="btn-primary" id="btnRunLab" onclick="runLabAnalysis()">🚀 Start Deep Analysis</button>
+        <button class="btn-secondary" onclick="resetLab()">🧹 Clear Field</button>
+      </div>
+
+      <!-- Training Progress -->
+      <div id="labProgress" class="hidden" style="margin-top:20px">
+        <div class="progress-bar">
+          <div class="progress-fill" id="labProgressFill" style="width:0%"></div>
+        </div>
+        <p id="labStatus" style="font-size:0.7rem; color:var(--text-muted); text-align:center; margin-top:5px">Scanning
+          frames...</p>
+      </div>
+      <!-- Brain Explorer: See what is learned -->
+      <div class="brain-explorer"
+        style="margin-top:25px; background:rgba(255,255,255,0.03); border-radius:12px; padding:15px; border:1px solid rgba(168, 85, 247, 0.1)">
+        <h4 style="font-size:0.8rem; color:#a855f7; margin-bottom:10px; display:flex; justify-content:space-between">
+          <span>🧠 Brain Knowledge Map</span>
+          <span id="kb-size" style="opacity:0.6">0 entries</span>
+        </h4>
+        <!-- AI Self-Optimization Card -->
+        <div class="lab-card" style="margin-top:20px; border-color:var(--primary)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
+            <div>
+              <h3 style="color:var(--primary); margin:0; font-size:0.9rem">⚡ AI Self-Optimization</h3>
+              <p style="font-size:0.65rem; color:var(--text-muted); margin:3px 0 0 0">Run high-intensity neural
+                simulation to boost 'Best' detection mode.</p>
+            </div>
+            <button id="btnSelfTrain" onclick="startSelfTraining()" class="btn-primary"
+              style="padding:8px 15px; font-size:0.7rem">Start Optimization</button>
+          </div>
+          <div
+            style="font-size:0.65rem; background:rgba(0,0,0,0.3); padding:8px; border-radius:6px; color:var(--text-muted)">
+            Note: This method uses synthetic datasets to calibrate the Lens Reflection and Visual AI algorithms for peak
+            sensitivity.
+          </div>
+        </div>
+
+        <div id="brain-map" style="display:flex; flex-wrap:wrap; gap:5px">
+          <!-- Symbols representing learned patterns appear here -->
+          <p style="font-size:0.65rem; color:var(--text-muted)">Brain is empty. Feed data to grow intelligence...</p>
+        </div>
+
+        <!-- NEW: Share & Portable Data Buttons -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:20px">
+          <button class="btn-secondary" onclick="exportBrain()"
+            style="font-size:0.7rem; border-color:var(--primary); color:var(--primary)">
+            📤 Export Brain File
+          </button>
+          <button class="btn-secondary" onclick="document.getElementById('importFile').click()"
+            style="font-size:0.7rem; border-color:var(--accent); color:var(--accent)">
+            📥 Import Brain File
+          </button>
+          <input type="file" id="importFile" hidden accept=".json" onchange="importBrain(this)">
+          <button class="btn-secondary" onclick="seedBrainFromProject()"
+            style="grid-column: span 2; font-size:0.7rem; border-color:var(--warn); background:rgba(245,158,11,0.05); color:var(--warn)">
+            🦾 Force Sync with Project Master Brain
+          </button>
+        </div>
+
+        <button onclick="clearBrain()"
+          style="margin-top:15px; width:100%; padding:8px; background:none; border:1px solid rgba(239, 68, 68, 0.2); color:var(--danger); font-size:0.7rem; border-radius:6px; cursor:pointer">
+          🧹 Factory Reset Brain
+        </button>
+      </div>
+
+      <div class="warning-card" style="margin-top:20px">
+        <div class="guide-icon">🧪</div>
+        <div class="guide-text">
+          <strong>Developer Note:</strong> This feature uses transfer learning to adapt to your device's sensor noise.
+          Keep feeding data to improve accuracy!
+        </div>
+      </div>
+    </section>
+
+    <!-- Screen: Network Scan -->
+    <section class="screen" id="screen-network">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>Network Scanner</h2>
+        <span class="screen-badge net">WiFi</span>
+      </div>
+
+      <div class="network-info-card" id="networkInfoCard">
+        <div class="net-icon">📡</div>
+        <div class="net-details">
+          <div class="net-row"><span>Status</span><span id="netStatus" class="net-val">Checking…</span></div>
+          <div class="net-row"><span>Connection</span><span id="netType" class="net-val">—</span></div>
+          <div class="net-row"><span>Your IP Range</span><span id="netRange" class="net-val">Scanning…</span></div>
+        </div>
+      </div>
+
+      <!-- Phase indicator -->
+      <div class="phase-label-wrap" id="netPhaseWrap">
+        <div class="phase-label" id="netPhaseLabel">Ready — tap Start to scan your WiFi network</div>
+      </div>
+
+      <div class="net-scan-visual" id="netScanVisual">
+        <div class="net-radar">
+          <div class="radar-ring r1"></div>
+          <div class="radar-ring r2"></div>
+          <div class="radar-ring r3"></div>
+          <div class="radar-sweep" id="radarSweep"></div>
+          <div class="radar-center"></div>
+          <div class="radar-devices" id="radarDevices"></div>
+        </div>
+        <div class="net-scan-info">
+          <div class="net-progress-wrap">
+            <div class="net-progress-bar">
+              <div class="net-progress-fill" id="netProgressFill" style="width:0%"></div>
+            </div>
+            <span id="netProgressText">0%</span>
+          </div>
+          <div class="net-stats">
+            <div class="stat-card">
+              <div class="stat-val" id="nStat-scanned">0</div>
+              <div class="stat-lbl">IPs Probed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" id="nStat-found">0</div>
+              <div class="stat-lbl">Live Hosts</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" id="nStat-cameras" style="color:var(--danger)">0</div>
+              <div class="stat-lbl">📹 Cameras</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Camera alert -->
+      <div class="alert-banner hidden" id="netCamAlert">
+        <span>🚨</span>
+        <span id="netCamAlertText">IP Camera detected on your network!</span>
+      </div>
+
+      <div class="devices-list-header">
+        <span>Discovered Devices</span>
+        <span class="hint-text">Cameras sorted first</span>
+      </div>
+      <div class="devices-list" id="devicesList" style="max-height:280px">
+        <p class="list-empty">Start scan to discover all devices on your WiFi…</p>
+      </div>
+
+      <div class="warning-card">
+        <div class="guide-icon">🛡️</div>
+        <div class="guide-text">
+          <strong style="color:var(--primary); display:block; margin-bottom:4px;">How to find Offline Cameras?</strong>
+          A hidden camera may <strong>not</strong> appear on the network if it's recording to an SD card or in deep
+          sleep.
+          <ul style="margin: 6px 0 6px 16px; padding:0; font-size:0.65rem; color:var(--text-muted)">
+            <li>Use <strong>Magnetic Scan</strong> to find the electronics behind walls.</li>
+            <li>Use <strong>Lens Reflection</strong> to find the physical glass lens.</li>
+            <li>Use <strong>Bluetooth Scan</strong> to find wireless chips not on your WiFi.</li>
+          </ul>
+          Try the <strong>Full Fusion Scan</strong> on the Home screen for total protection.
+        </div>
+      </div>
+
+      <div class="screen-actions">
+        <button class="btn-primary" id="btnStartNet" onclick="startNetworkScan()">
+          📡 Start Network Scan
+        </button>
+        <button class="btn-secondary" id="btnStopNet" onclick="stopNetworkScan()" disabled>
+          ⏹ Stop Scan
+        </button>
+      </div>
+    </section>
+
+    <!-- Screen: Magnetic Field -->
+    <section class="screen" id="screen-magnetic">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>Magnetic Field Detector</h2>
+        <span class="screen-badge mag">EM</span>
+      </div>
+
+      <div class="mag-guide-card">
+        <div class="guide-icon">🧲</div>
+        <div class="guide-text">
+          <strong></strong>How to scan:</strong> Move your phone slowly close to suspicious objects (walls, clocks,
+          tissue boxes). Hidden cameras and their power supplies emit electromagnetic fields.
+          Sudden spikes in the chart indicate nearby circuit boards or hidden wiring.
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="guide-icon">🧱</div>
+        <div class="guide-text">
+          <strong>Best For:</strong> Detecting "completely hidden" cameras behind walls, inside furniture, or stuffed
+          inside plush toys where a lens might not be visible.
+        </div>
+      </div>
+
+      <div class="mag-display" id="magDisplay">
+        <div class="mag-gauge-wrap">
+          <svg class="mag-gauge" viewBox="0 0 200 120">
+            <!-- Background arc -->
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1a1a3a" stroke-width="16"
+              stroke-linecap="round" />
+            <!-- Colored zone arcs -->
+            <path d="M 20 100 A 80 80 0 0 1 70 28" fill="none" stroke="#10b981" stroke-width="16" opacity="0.4"
+              stroke-linecap="round" />
+            <path d="M 70 28 A 80 80 0 0 1 130 28" fill="none" stroke="#f59e0b" stroke-width="16" opacity="0.4"
+              stroke-linecap="round" />
+            <path d="M 130 28 A 80 80 0 0 1 180 100" fill="none" stroke="#ef4444" stroke-width="16" opacity="0.4"
+              stroke-linecap="round" />
+            <!-- Active arc -->
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#magGrad)" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="251" id="magArc"
+              style="stroke-dashoffset:251; transition: stroke-dashoffset 0.3s" />
+            <!-- Needle -->
+            <line x1="100" y1="100" x2="100" y2="30" stroke="#fff" stroke-width="2" stroke-linecap="round"
+              id="magNeedle" style="transform-origin:100px 100px; transform:rotate(0deg); transition:transform 0.3s" />
+            <circle cx="100" cy="100" r="6" fill="#fff" />
+            <defs>
+              <linearGradient id="magGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#10b981" />
+                <stop offset="50%" stop-color="#f59e0b" />
+                <stop offset="100%" stop-color="#ef4444" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="mag-value-display">
+            <div class="mag-value" id="magValue">0.0</div>
+            <div class="mag-unit">μT</div>
+          </div>
+        </div>
+        <!-- Neural Match Status -->
+        <div id="magNeuralStatus"
+          style="font-size:0.65rem; text-align:center; padding:5px 10px; border-radius:20px; background:rgba(255,255,255,0.05); color:var(--text-muted); margin-bottom:15px; border:1px solid rgba(255,255,255,0.05); transition:all 0.3s">
+          🤖 MONITORING ELECTROMAGNETIC FLUX...
+        </div>
+        <div class="mag-axes">
+          <div class="axis-row">
+            <span class="axis-label">X-Axis</span>
+            <div class="axis-bar">
+              <div class="axis-fill" id="axisX" style="width:50%"></div>
+            </div>
+            <span class="axis-val" id="axisXVal">0.0</span>
+          </div>
+          <div class="axis-row">
+            <span class="axis-label">Y-Axis</span>
+            <div class="axis-bar">
+              <div class="axis-fill" id="axisY" style="width:50%"></div>
+            </div>
+            <span class="axis-val" id="axisYVal">0.0</span>
+          </div>
+          <div class="axis-row">
+            <span class="axis-label">Z-Axis</span>
+            <div class="axis-bar">
+              <div class="axis-fill" id="axisZ" style="width:50%"></div>
+            </div>
+            <span class="axis-val" id="axisZVal">0.0</span>
+          </div>
+        </div>
+        <div class="mag-chart-wrap">
+          <canvas id="magChart" height="80"></canvas>
+        </div>
+      </div>
+
+      <div class="mag-status-card" id="magStatusCard">
+        <span class="status-icon" id="magStatusIcon">🔵</span>
+        <span class="status-text" id="magStatusText">Tap Start to begin monitoring</span>
+      </div>
+
+      <div class="mag-calibration hidden" id="magCalProgress">
+        <div class="mag-cal-label">Calibrating: <span id="magCalPct">0%</span></div>
+        <div class="mag-cal-bar"><div class="mag-cal-fill" id="magCalFill"></div></div>
+      </div>
+
+      <div class="alert-banner hidden" id="magAlert">
+        <span>⚠️</span>
+        <span id="magAlertText">Strong EM field detected — possible hidden device!</span>
+      </div>
+
+      <div class="screen-actions">
+        <button class="btn-primary" id="btnStartMag" onclick="startMagneticScan()">
+          🧲 Start EM Monitor
+        </button>
+        <button class="btn-secondary" id="btnStopMag" onclick="stopMagneticScan()" disabled>
+          ⏹ Stop
+        </button>
+      </div>
+    </section>
+
+    <!-- Screen: Full Scan Results -->
+    <section class="screen" id="screen-results">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>Full Scan Report</h2>
+        <span class="screen-badge" id="resultBadge">Processing</span>
+      </div>
+      <div class="report-card" id="reportCard">
+        <div class="report-header">
+          <div class="report-icon" id="reportIcon">🔍</div>
+          <div class="report-summary">
+            <h3 id="reportTitle">Scanning…</h3>
+            <p id="reportDesc">Running all detection methods…</p>
+          </div>
+        </div>
+        <div class="report-progress" id="reportProgress">
+          <div class="scan-step" id="step-visual"><span class="step-icon">⏳</span><span>AI Visual Scan</span><span
+              class="step-result" id="stepres-visual">Pending</span></div>
+          <div class="scan-step" id="step-lens"><span class="step-icon">⏳</span><span>Lens Reflection</span><span
+              class="step-result" id="stepres-lens">Pending</span></div>
+          <div class="scan-step" id="step-network"><span class="step-icon">⏳</span><span>Network Scan</span><span
+              class="step-result" id="stepres-network">Pending</span></div>
+          <div class="scan-step" id="step-magnetic"><span class="step-icon">⏳</span><span>EM/Magnetic</span><span
+              class="step-result" id="stepres-magnetic">Pending</span></div>
+        </div>
+        <div class="report-findings" id="reportFindings" style="display:none"></div>
+      </div>
+    </section>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SCREEN: IR REMOTE SCANNER -->
+    <!-- ================================================================ -->
+    <section class="screen" id="screen-ir">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>IR / Remote Scanner</h2>
+        <span class="screen-badge" style="background:#a855f7">Front Cam</span>
+      </div>
+
+      <div class="warning-card" style="border-color:rgba(168, 85, 247, 0.3); margin-bottom:20px">
+        <div class="guide-icon">💡</div>
+        <div class="guide-text">
+          <strong>Tip:</strong> Most hidden cameras use IR for night vision. Use your <strong>Front Camera</strong>
+          (usually has no IR filter) to see the invisible glow.
+        </div>
+      </div>
+
+      <div class="video-container" style="aspect-ratio:3/4; border-color:#a855f7; overflow:hidden">
+        <video id="irVideo" muted playsinline
+          style="width:100%; height:100%; object-fit:cover; filter: contrast(1.5) brightness(1.2) hue-rotate(280deg) saturate(1.5)"></video>
+        <canvas id="irOverlay" style="position:absolute; inset:0; pointer-events:none"></canvas>
+        <div class="scan-beam"
+          style="background:linear-gradient(to bottom, transparent, rgba(168, 85, 247, 0.3), transparent)"></div>
+      </div>
+
+      <div class="screen-actions" style="margin-top:20px">
+        <button class="btn-primary" id="btnStartIR" onclick="startIRScan()">🚀 Start IR Detection</button>
+        <button class="btn-secondary" id="btnStopIR" onclick="stopIRScan()" disabled>⏹ Stop</button>
+      </div>
+
+      <div class="stats-grid" style="margin-top:25px; grid-template-columns: 1fr 1fr; gap:10px">
+        <div class="stat-card" style="padding:15px">
+          <label style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">IR
+            Intensity</label>
+          <div class="stat-val" id="irVal" style="font-size:1.5rem; color:#a855f7; margin:5px 0">0%</div>
+          <div class="progress-bar" style="height:4px; border-radius:10px">
+            <div class="progress-fill" id="irBar" style="width:0%; background:#a855f7"></div>
+          </div>
+        </div>
+        <div class="stat-card" style="padding:15px">
+          <label style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">Signal
+            Check</label>
+          <div class="stat-val" id="irSig" style="font-size:1rem; margin:10px 0">Ready</div>
+        </div>
+      </div>
+
+      <div class="log-container" id="irLog"
+        style="margin-top:20px; height:120px; font-size:0.65rem; background:rgba(0,0,0,0.2); border-radius:12px">
+        <p style="color:var(--text-muted); text-align:center; padding-top:40px">Point your front camera towards dark
+          corners or suspect objects.</p>
+      </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SCREEN: SCAN HISTORY & LEARNING -->
+    <!-- ================================================================ -->
+    <section class="screen" id="screen-history">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>History & Log</h2>
+        <span class="screen-badge">log</span>
+      </div>
+
+      <div class="guide-text" style="background:var(--card); margin-bottom:15px">
+        <strong>🧠 Adaptive AI</strong>: The detector learns from your feedback in "Lens Scan" mode. Mark detections as
+        "Real Camera" to make it more sensitive, or "False Alarm" to reduce false positives.
+        <div style="margin-top:10px">
+          <button class="btn-secondary" style="padding:6px 12px; font-size:0.75rem" onclick="clearHistory()">Clear Data
+            & Reset AI</button>
+        </div>
+      </div>
+
+      <div class="detections-list" id="historyList" style="flex:1; max-height:none; overflow-y:auto">
+        <p class="list-empty">Loading history...</p>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         MULTI-SENSOR FUSION PANEL
+         ============================================================ -->
+    <section id="screen-fusion" class="screen hidden">
+      <div class="screen-header">
+        <button class="back-btn" onclick="openScreen('screen-home')">← Back</button>
+        <h2>Fusion AI Panel</h2>
+        <span class="screen-badge" style="background:rgba(168,85,247,0.15);color:#c084fc">FUSION</span>
+      </div>
+
+      <div class="info-card">
+        <div class="guide-icon">🧠</div>
+        <div class="guide-text">
+          <strong>Multi-Sensor Fusion Engine</strong> combines ALL available sensor readings
+          (Visual AI · Lens Reflection · Magnetic Field · Network · IR) into a single
+          weighted probability score. Run each scan first, then view the combined result here.
+        </div>
+      </div>
+
+      <!-- Live Fusion Score Card -->
+      <div class="lab-card" style="margin-top:20px;border-color:rgba(168,85,247,0.3)">
+        <h3 style="color:#c084fc;font-size:0.9rem;margin-bottom:15px">🔬 Fused Detection Score</h3>
+        <div id="fusionPanel">
+          <p style="font-size:0.7rem;color:var(--text-muted);text-align:center;padding:20px 0">
+            Run at least one scan to compute Fusion Score
+          </p>
+        </div>
+      </div>
+
+      <!-- Confidence Breakdown Card -->
+      <div class="lab-card" style="margin-top:15px">
+        <h3 style="color:#a855f7;font-size:0.85rem;margin-bottom:12px">📋 Detection Confidence Report</h3>
+        <div id="fusionReport" style="display:grid;gap:8px;font-size:0.72rem">
+          <div class="fusion-row"><span>📷 Camera Probability:</span><span id="fc-camera" style="color:#f87171">—</span>
+          </div>
+          <div class="fusion-row"><span>🧲 Magnetic Match:</span> <span id="fc-magnetic">—</span></div>
+          <div class="fusion-row"><span>📡 Network Device:</span> <span id="fc-network">—</span></div>
+          <div class="fusion-row"><span>🔦 Lens Reflection:</span> <span id="fc-lens">—</span></div>
+          <div class="fusion-row"><span>🌡️ IR Signal:</span> <span id="fc-ir">—</span></div>
+          <div class="fusion-row"><span>🦾 Neural Fingerprint:</span><span id="fc-neural">—</span></div>
+        </div>
+      </div>
+
+      <!-- Compute Fusion Button -->
+      <div class="screen-actions" style="margin-top:15px">
+        <button class="btn-primary" onclick="computeFusionNow()">🔬 Compute Fusion Score</button>
+        <button class="btn-secondary" onclick="resetFusionPanel()">↺ Reset All Scores</button>
+      </div>
+
+      <!-- AI Adaptation Stats -->
+      <div class="lab-card" style="margin-top:15px">
+        <h3 style="font-size:0.8rem;margin-bottom:10px">⚡ Self-Learning Thresholds</h3>
+        <div style="font-size:0.68rem;display:grid;gap:5px;color:var(--text-muted)">
+          <div>Fusion Alert Threshold: <strong id="ft-fusion" style="color:#c084fc">—</strong></div>
+          <div>AI Confidence Floor: <strong id="ft-ai" style="color:#60a5fa">—</strong></div>
+          <div>Glint Sensitivity: <strong id="ft-glint" style="color:#34d399">—</strong></div>
+          <div>Knowledge Base Size: <strong id="ft-kb" style="color:#fbbf24">—</strong></div>
+          <div>Confirmed Detections: <strong id="ft-confirmed" style="color:#f87171">—</strong></div>
+          <div>Overall Accuracy: <strong id="ft-accuracy" style="color:#a78bfa">—</strong></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Install PWA Banner -->
+  <div class="install-banner hidden" id="installBanner">
+    <div class="install-content">
+      <span>📲 Install CamGuard AI on your phone!</span>
+      <button onclick="installPWA()" class="install-btn">Install</button>
+      <button onclick="dismissInstall()" class="install-dismiss">✕</button>
+    </div>
+  </div>
+
+  <script src="fusion-engine.js"></script>
+  <script src="fusion-panel.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>

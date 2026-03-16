@@ -1,0 +1,13 @@
+CamGuard Model Evaluation (validation set)
+
+Total samples: 303
+Accuracy: 0.8482
+
+Per-class metrics:
+- camera: precision=0.8934 recall=0.9346 f1=0.9135 support=260
+- normal: precision=0.4516 recall=0.3256 f1=0.3784 support=43
+
+Confusion matrix (rows=true, cols=pred):
+             pred_camera  pred_normal
+true_camera      243          17
+true_normal       29          14
