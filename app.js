@@ -793,6 +793,11 @@ const CAM_SAFE_CLASSES = new Set([
 
 function isCameraLike(objClass, score)
 {
+  const cls = String(objClass || '').toLowerCase();
+  // Custom model is binary classification, so trust its score threshold directly.
+  if (cls.includes('hidden camera') || cls === 'camera' || cls === 'camera_candidate') {
+    return score >= db.adaptedAIThreshold;
+  }
   if (CAM_SAFE_CLASSES.has(objClass)) return false;
   const threshold = CAM_HIDE_CLASSES[objClass];
   if (threshold !== undefined && score >= threshold) return true;
@@ -1194,7 +1199,8 @@ async function startLensScan()
           setHeaderStatus('Lens+AI Scanning…', 'scanning');
         }
 
-        if (Math.random() < 0.017) {
+        // Persist periodic lens-session snapshots at a deterministic cadence.
+        if (frameCount % 45 === 0) {
           sessionUpdate({ maxRisk: combined, glintsFound: reflCount, aiFlags: aiCamCount, avgRoomLum });
           saveLearningData();
           if (reflCount > 0) appendLensLog(`🔦 Found ${reflCount} glint(s) (Risk ${combined}%)`, 'warn');
@@ -1994,7 +2000,7 @@ const BLEScanner = {
 // ================================================================
 // COMPREHENSIVE SWEEP — Total Environment Analysis
 // ================================================================
-async function startFullScan()
+async function startBackgroundSweep()
 {
   if (state.fullScan.running) return;
   state.fullScan.running = true;
@@ -2382,21 +2388,23 @@ async function startFullScan()
   let totalThreat = 0;
   const results = {};
 
-  // Step 1: Network Scan (fastest, runs in background)
+  // Step 1: Network Scan
   setStep('network', '🔄', 'Scanning…', '');
-  await runQuickNetworkScan().then(r =>
-  {
+  try {
+    const r = await runQuickNetworkScan();
     results.network = r;
     setStep('network', r.cameras > 0 ? '⚠️' : '✅',
-      r.cameras > 0 ? `${r.cameras} camera(s) found!` : `${r.devices} devices, safe`,
+      r.cameras > 0 ? `${r.cameras} camera(s) found!` : `${r.devices} devices scanned`,
       r.cameras > 0 ? 'danger' : 'ok');
     totalThreat += r.cameras * 35;
-  });
+  } catch (e) {
+    results.network = { devices: 0, cameras: 0, available: false };
+    setStep('network', '⚠️', 'Network scan failed', 'warn');
+  }
 
   // Step 2: Magnetic
   setStep('magnetic', '🔄', 'Reading sensors…', '');
-  await runQuickMagneticScan().then(r =>
-  {
+  await runQuickMagneticScan().then(r => {
     results.magnetic = r;
     if (!r.available) {
       setStep('magnetic', '⚠️', 'EM sensor unavailable', 'warn');
@@ -2409,36 +2417,65 @@ async function startFullScan()
 
   // Step 3: Visual AI
   setStep('visual', '🔄', 'Loading AI…', '');
-  await runQuickVisualScan().then(r =>
-  {
+  await runQuickVisualScan().then(r => {
     results.visual = r;
+    if (!r.available) {
+      setStep('visual', '⚠️', 'Camera/AI unavailable', 'warn');
+      return;
+    }
     setStep('visual', r.found ? '⚠️' : '✅',
-      r.found ? `Suspicious object detected` : `${r.objects} objects, clear`, r.found ? 'danger' : 'ok');
+      r.found ? `${r.suspicious} suspicious object(s)` : `${r.objects} objects, clear`,
+      r.found ? 'danger' : 'ok');
     if (r.found) totalThreat += 40;
   });
 
-  // Step 4: Lens scan (requires camera)
+  // Step 4: Lens summary (real only if lens scan is currently active)
   setStep('lens', '🔄', 'Analyzing reflections…', '');
-  await sleep(2000);
-  const lensResult = { found: false, score: 0 };
-  setStep('lens', '✅', 'No suspicious reflections', 'ok');
+  await sleep(300);
+  const currentLensScore = Math.round(state.scores.lens || 0);
+  const lensResult = {
+    available: state.lens.running || currentLensScore > 0,
+    found: currentLensScore >= db.adaptedRiskThreshold,
+    score: currentLensScore
+  };
+  if (lensResult.available) {
+    setStep('lens', lensResult.found ? '⚠️' : '✅',
+      lensResult.found ? `Lens risk ${lensResult.score}%` : 'No active lens alert',
+      lensResult.found ? 'danger' : 'ok');
+    if (lensResult.found) totalThreat += Math.min(30, Math.round(lensResult.score * 0.3));
+  } else {
+    setStep('lens', '⚠️', 'Manual lens scan required', 'warn');
+  }
   results.lens = lensResult;
 
   // Final report
   const threatPct = Math.min(100, Math.round(totalThreat));
-  state.scores = { visual: results.visual.found ? 75 : 0, lens: lensResult.score, network: results.network.cameras * 35, magnetic: results.magnetic.available && results.magnetic.anomaly ? 60 : 0 };
+  state.scores = {
+    visual: results.visual.found ? 75 : 0,
+    lens: lensResult.score,
+    network: results.network.cameras * 35,
+    magnetic: results.magnetic.available && results.magnetic.anomaly ? 60 : 0
+  };
   updateThreatScore();
 
-  const isSafe = threatPct < 30;
+  const hasUnavailable = !results.visual.available || !results.magnetic.available || !results.lens.available;
+  const isSafe = threatPct < 30 && !hasUnavailable;
+  const isPartial = threatPct < 30 && hasUnavailable;
   const emSummary = results.magnetic.available ? (results.magnetic.anomaly ? 'Yes' : 'No') : 'Unavailable';
-  document.getElementById('reportIcon').textContent = isSafe ? '✅' : '⚠️';
-  document.getElementById('reportTitle').textContent = isSafe ? 'Room Appears Safe' : 'Potential Threats Detected';
+  document.getElementById('reportIcon').textContent = isSafe ? '✅' : isPartial ? 'ℹ️' : '⚠️';
+  document.getElementById('reportTitle').textContent = isSafe
+    ? 'Room Appears Safe'
+    : isPartial
+      ? 'Partial Scan Complete'
+      : 'Potential Threats Detected';
   document.getElementById('reportDesc').textContent = isSafe
-    ? 'No hidden cameras detected across all scan methods.'
-    : `${results.network.cameras} network camera(s), EM anomaly: ${emSummary}`;
+    ? 'No hidden cameras detected across all available methods.'
+    : isPartial
+      ? 'No high-risk findings, but one or more sensors were unavailable.'
+      : `${results.network.cameras} network camera(s), EM anomaly: ${emSummary}`;
 
-  document.getElementById('resultBadge').textContent = isSafe ? 'Safe' : 'Alert';
-  document.getElementById('resultBadge').className = `screen-badge ${isSafe ? '' : 'danger'}`;
+  document.getElementById('resultBadge').textContent = isSafe ? 'Safe' : isPartial ? 'Partial' : 'Alert';
+  document.getElementById('resultBadge').className = `screen-badge ${isSafe ? '' : isPartial ? 'warn' : 'danger'}`;
 
   // Findings
   const findingsEl = document.getElementById('reportFindings');
@@ -2459,27 +2496,41 @@ async function startFullScan()
     </div>
     <div class="finding-detail">
       <strong>👁️ AI Visual Analysis</strong>
-      Detected ${results.visual.objects} objects in view.
-      ${results.visual.found ? `<span style="color:var(--danger)"> ⚠️ Suspicious electronic device in camera view.</span>` : ' No camera-like objects detected.'}
+      ${!results.visual.available
+      ? 'Camera or AI model unavailable for quick visual check.'
+      : `Detected ${results.visual.objects} objects in view.
+      ${results.visual.found ? `<span style="color:var(--danger)"> ⚠️ Suspicious electronic device in camera view.</span>` : ' No camera-like objects detected.'}`}
     </div>
     <div class="finding-detail">
       <strong>🔦 Lens Reflection Analysis</strong>
-      No suspicious lens reflections detected. Run individual scan with torch enabled for full accuracy.
+      ${results.lens.available
+      ? (results.lens.found
+        ? `<span style="color:var(--warn)">⚠️ Active lens scan indicates risk ${results.lens.score}%.</span>`
+        : 'No active lens alert from current sensor state.')
+      : 'Lens auto-check not run to avoid fake data. Use Lens Reflection screen for real scan.'}
     </div>
     <div class="finding-detail" style="background:${isSafe ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; border:1px solid ${isSafe ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}">
       <strong style="color:${isSafe ? 'var(--success)' : 'var(--danger)'}">
-        ${isSafe ? '✅ CONCLUSION: Area appears safe' : '⚠️ CONCLUSION: Potential hidden camera activity detected'}
+        ${isSafe
+      ? '✅ CONCLUSION: Area appears safe'
+      : isPartial
+        ? 'ℹ️ CONCLUSION: Partial result only'
+        : '⚠️ CONCLUSION: Potential hidden camera activity detected'}
       </strong>
       ${isSafe
-      ? 'All detection methods returned normal results. Continue to periodically scan hotel rooms, changing rooms, and short-term rentals.'
-      : 'One or more detection methods flagged suspicious activity. Investigate highlighted areas. Use individual scan modes for detailed analysis.'}
+      ? 'Available detection methods returned normal results.'
+      : isPartial
+        ? 'No strong alerts, but this is not a complete safety verdict because some sensors were unavailable.'
+        : 'One or more detection methods flagged suspicious activity. Investigate highlighted areas and run focused scans.'}
     </div>
   `;
 
   state.fullScan.running = false;
 
-  if (!isSafe) {
+  if (!isSafe && !isPartial) {
     showToast('⚠️ Threats detected! Review full report.', 'danger', 6000);
+  } else if (isPartial) {
+    showToast('ℹ️ Partial scan complete. Run missing sensor scans for full confidence.', 'warn', 5000);
   } else {
     showToast('✅ Full scan complete — room appears safe!', 'success', 4000);
   }
@@ -2495,11 +2546,18 @@ function setStep(key, icon, text, cls)
 
 async function runQuickNetworkScan()
 {
-  await sleep(3000);
-  const devices = 3 + Math.floor(Math.random() * 8);
-  const cameras = Math.random() < 0.2 ? 1 : 0; // 20% chance to find camera
+  if (!state.network.running) {
+    await startNetworkScan();
+  } else {
+    const waitStart = Date.now();
+    while (state.network.running && Date.now() - waitStart < 45000) {
+      await sleep(300);
+    }
+  }
+  const devices = state.network.devices.length;
+  const cameras = state.network.devices.filter(d => d.isSuspicious).length;
   state.findings.network = cameras > 0 ? `${cameras} camera` : `${devices} dev`;
-  return { devices, cameras };
+  return { devices, cameras, available: true };
 }
 
 async function runQuickMagneticScan()
@@ -2528,18 +2586,43 @@ async function runQuickMagneticScan()
 
 async function runQuickVisualScan()
 {
-  // Try to use camera for a quick snap
+  let tempStream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    await sleep(2000);
-    stream.getTracks().forEach(t => t.stop());
-    const objects = 2 + Math.floor(Math.random() * 5);
-    const found = Math.random() < 0.1; // 10% chance
-    state.findings.visual = found ? '1 suspicious' : `${objects} obj`;
-    return { found, objects };
-  } catch {
+    await loadSelectedModels();
+
+    let source = null;
+    const activeVideo = document.getElementById('visualVideo');
+    if (state.visual.running && activeVideo && activeVideo.readyState >= 2) {
+      source = activeVideo;
+    } else {
+      tempStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      const probeVideo = document.createElement('video');
+      probeVideo.muted = true;
+      probeVideo.playsInline = true;
+      probeVideo.srcObject = tempStream;
+      await probeVideo.play();
+      await sleep(500);
+      source = probeVideo;
+    }
+
+    const predictions = await getAIPredictions(source);
+    const suspicious = predictions.filter(p => isCameraLike(p.class, p.score));
+    const maxConf = suspicious.reduce((max, p) => Math.max(max, p.score), 0);
+    const found = suspicious.length > 0;
+    const objects = predictions.length;
+
+    state.findings.visual = found ? `${suspicious.length} suspicious` : `${objects} obj`;
+    if (typeof updateVisualFusionScore === 'function') {
+      updateVisualFusionScore(suspicious.length, maxConf);
+    }
+    return { found, objects, suspicious: suspicious.length, available: true };
+  } catch (e) {
     state.findings.visual = 'No cam';
-    return { found: false, objects: 0 };
+    return { found: false, objects: 0, suspicious: 0, available: false, error: e.message };
+  } finally {
+    if (tempStream) tempStream.getTracks().forEach(t => t.stop());
   }
 }
 
@@ -2718,46 +2801,18 @@ function handleLabUpload(input)
 async function startSelfTraining()
 {
   if (labAnalysisRunning) return;
-  labAnalysisRunning = true;
-
-  const btn = document.getElementById('btnSelfTrain');
-  const progress = document.getElementById('labProgress');
-  const fill = document.getElementById('labProgressFill');
+  const preview = document.getElementById('labPreviewContainer');
   const status = document.getElementById('labStatus');
+  const hasLoadedMedia = preview && !preview.classList.contains('hidden');
 
-  btn.disabled = true;
-  progress.classList.remove('hidden');
-  status.textContent = '🚀 Launching AI Neural Self-Training...';
-
-  const trainingPhases = [
-    { name: 'Loading Synthetic Camera Dataset...', pct: 20, weight: 50 },
-    { name: 'Simulating Lens Reflection Patterns...', pct: 40, weight: 40 },
-    { name: 'Calibrating Multi-Angle AI Nodes...', pct: 65, weight: 60 },
-    { name: 'Optimizing Detection Heuristics...', pct: 85, weight: 30 },
-    { name: 'Finalizing Neural Weights...', pct: 100, weight: 20 }
-  ];
-
-  for (const phase of trainingPhases) {
-    status.textContent = phase.name;
-    let current = parseInt(fill.style.width) || 0;
-    while (current < phase.pct) {
-      current += 2;
-      fill.style.width = current + '%';
-      await sleep(100);
-    }
-    // Inject "synthetic" knowledge bits to simulate learning
-    for (let i = 0; i < phase.weight; i++) {
-      learnFromDetection('synthetic_cam_node', 0.95 + (Math.random() * 0.05));
-    }
+  if (!hasLoadedMedia) {
+    if (status) status.textContent = 'Load an image or video first. Training only uses your real data.';
+    showToast('Load image/video first. Synthetic training is disabled.', 'warn', 4500);
+    return;
   }
 
-  labAnalysisRunning = false;
-  btn.disabled = false;
-  status.textContent = '🏆 Self-Training Complete. AI Brain is now Optimized.';
-  saveLearningData();
-  updateLabStats();
-  updateHomeStats();
-  showToast('🏆 AI Self-Training Optimized the Brain!', 'success', 5000);
+  if (status) status.textContent = 'Running self-training from your uploaded data only...';
+  await runLabAnalysis();
 }
 
 async function runLabAnalysis()
@@ -3098,14 +3153,21 @@ function updateIRDisplay(intensity, avg)
   if (intensity > 90) {
     sigEl.textContent = '🚨 HIGH GLINT';
     sigEl.style.color = 'var(--danger)';
-    if (Math.random() > 0.95) appendIRLog('🚨 Direct IR target detected!', 'danger');
+    if (state.ir.alerts !== 1) {
+      appendIRLog('🚨 Direct IR target detected!', 'danger');
+      state.ir.alerts = 1;
+    }
   } else if (diff > 15) {
     sigEl.textContent = '📡 PULSING';
     sigEl.style.color = 'var(--primary)';
-    if (Math.random() > 0.98) appendIRLog('📡 Active IR signal detected (Pulsing)', 'info');
+    if (state.ir.alerts !== 2) {
+      appendIRLog('📡 Active IR signal detected (Pulsing)', 'info');
+      state.ir.alerts = 2;
+    }
   } else {
     sigEl.textContent = intensity > 50 ? 'Medium' : 'Low';
     sigEl.style.color = 'var(--text-muted)';
+    state.ir.alerts = 0;
   }
 }
 
@@ -3278,8 +3340,12 @@ function runCustomPredict(source)
   {
     const tensor = tf.browser.fromPixels(source).resizeNearestNeighbor([224, 224]).toFloat().expandDims();
     const scoreTensor = state.models.custom.predict(tensor);
-    const score = scoreTensor.dataSync()[0];
-    return [{ class: 'Hidden Camera', score: score, bbox: [20, 20, 200, 200] }]; // normalized/rough for class
+    const score = Number(scoreTensor.dataSync()[0] || 0);
+    if (score < 0.35) return [];
+    const w = source.videoWidth || source.naturalWidth || source.width || 224;
+    const h = source.videoHeight || source.naturalHeight || source.height || 224;
+    // Custom model is a classifier, so we expose one full-frame candidate with real score.
+    return [{ class: 'Hidden Camera', score, bbox: [0, 0, w, h] }];
   });
 }
 
