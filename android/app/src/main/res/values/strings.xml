@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CamGuardAI</string>
+    <string name="title_activity_main">CamGuardAI</string>
+    <string name="package_name">com.brahminladka.hiddencam</string>
+    <string name="custom_url_scheme">com.brahminladka.hiddencam</string>
+</resources>

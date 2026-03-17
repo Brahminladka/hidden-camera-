@@ -1,0 +1,37 @@
+{
+  "name": "hiddencam-detector",
+  "version": "1.0.0",
+  "description": "CamGuard AI hidden-camera detector",
+  "private": true,
+  "main": "app.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"No tests configured\"",
+    "mobile:prepare": "node scripts/prepare-mobile-web.mjs",
+    "mobile:sync": "node scripts/prepare-mobile-web.mjs && npx cap sync android",
+    "mobile:open": "node scripts/prepare-mobile-web.mjs && npx cap sync android && npx cap open android",
+    "mobile:run": "node scripts/prepare-mobile-web.mjs && npx cap sync android && npx cap run android"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Brahminladka/hidden-camera-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Brahminladka/hidden-camera-/issues"
+  },
+  "homepage": "https://github.com/Brahminladka/hidden-camera-#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/device": "^8.0.1",
+    "@capacitor/network": "^8.0.1"
+  }
+}
